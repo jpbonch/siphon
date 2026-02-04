@@ -1,0 +1,67 @@
+# Dependencies
+node_modules/
+.pnp/
+.pnp.js
+
+# Build outputs
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# Bun
+bun.lockb
+
+# Package manager locks (keep one, ignore others if switching)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Editor/IDE
+.idea/
+.vscode/
+*.sublime-*
+.project
+.settings/
+
+# Test & Coverage
+coverage/
+.nyc_output/
+*.lcov
+test-results/
+playwright-report/
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Temporary files
+tmp/
+temp/
+.tmp/
+.cache/
+*.tmp
+*.temp
+
+# Project-specific
+notes
+save
+changes
+
+# Siphon runtime (user's home dir, not in repo, but just in case)
+.siphon/

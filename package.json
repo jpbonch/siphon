@@ -1,0 +1,28 @@
+{
+  "name": "siphon-dev",
+  "version": "0.1.0",
+  "description": "Runtime context for coding agents",
+  "type": "module",
+  "bin": {
+    "siphon": "dist/siphon",
+    "siphon-mcp": "dist/siphon-mcp"
+  },
+  "scripts": {
+    "build": "bun build src/siphon.ts --compile --outfile dist/siphon && bun build src/siphon-mcp.ts --compile --outfile dist/siphon-mcp"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.22.0"
+  },
+  "keywords": [
+    "mcp",
+    "siphon",
+    "logging",
+    "debugging",
+    "coding-agent",
+    "claude",
+    "cursor"
+  ],
+  "author": "",
+  "license": "MIT"
+}

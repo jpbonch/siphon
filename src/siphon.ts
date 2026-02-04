@@ -11,6 +11,7 @@ import {
 } from "fs";
 import { basename, join } from "path";
 import { homedir } from "os";
+import { spawn, spawnSync } from "child_process";
 import * as readline from "readline";
 
 const SIPHON_DIR = `${homedir()}/.siphon`;
@@ -188,8 +189,8 @@ function truncateLogFile(logPath: string): void {
     const stat = statSync(logPath);
     if (stat.size > MAX_LOG_SIZE) {
       // Use tail to keep only the last ~500KB
-      const output = Bun.spawnSync(["tail", "-c", String(TRUNCATE_TO_SIZE), logPath]);
-      if (output.exitCode === 0) {
+      const output = spawnSync("tail", ["-c", String(TRUNCATE_TO_SIZE), logPath]);
+      if (output.status === 0) {
         writeFileSync(logPath, output.stdout);
       }
     }
@@ -265,10 +266,8 @@ async function runCommand(args: string[], sessionNameOverride?: string): Promise
   // Use pipefail to preserve exit code through tee
   const wrappedCommand = `set -o pipefail; (${command}) 2>&1 | tee "${logPath}"`;
 
-  const proc = Bun.spawn(["sh", "-c", wrappedCommand], {
-    stdin: "inherit",
-    stdout: "inherit",
-    stderr: "inherit",
+  const proc = spawn("sh", ["-c", wrappedCommand], {
+    stdio: "inherit",
   });
 
   meta.pid = proc.pid;
@@ -328,7 +327,9 @@ async function runCommand(args: string[], sessionNameOverride?: string): Promise
   }, 2000); // Check every 2 seconds
 
   // Wait for process to exit
-  const exitCode = await proc.exited;
+  const exitCode = await new Promise<number>((resolve) => {
+    proc.on("close", (code) => resolve(code ?? 1));
+  });
 
   // Stop monitoring
   clearInterval(monitorInterval);

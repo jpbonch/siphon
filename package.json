@@ -8,7 +8,8 @@
     "siphon-mcp": "dist/siphon-mcp.js"
   },
   "files": [
-    "dist/*.js"
+    "dist/*.js",
+    "README.md"
   ],
   "scripts": {
     "build": "bun run build:npm",

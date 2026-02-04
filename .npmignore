@@ -1,0 +1,37 @@
+# Source files (we ship dist only)
+src/
+scripts/
+
+# Development files
+*.ts
+tsconfig.json
+bun.lockb
+bun.lock
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+
+# Claude/Cursor config (project-specific)
+.claude/
+CLAUDE.md
+.cursor/
+.cursorrules
+
+# Compiled binaries (only ship JS for npm)
+dist/siphon
+dist/siphon-mcp
+
+# Tests
+test/
+tests/
+*.test.ts
+*.spec.ts
+
+# Misc
+.DS_Store
+*.log

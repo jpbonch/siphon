@@ -36,6 +36,7 @@ interface SessionMeta {
   errorCount: number;
   lastError: string | null;
   lastErrorAt: string | null;
+  lastSuccessAt: string | null;
 }
 
 // ============================================================================
@@ -154,6 +155,50 @@ function isErrorLine(line: string): boolean {
 }
 
 // ============================================================================
+// Success Detection
+// ============================================================================
+
+const SUCCESS_PATTERNS = [
+  /compiled successfully/i,
+  /compiled client and server successfully/i,
+  /ready in \d+m?s/i,
+  /build completed/i,
+  /watching for file changes/i,
+  /compiled.*in \d+m?s/i,
+  /webpack.*compiled/i,
+  /vite.*ready/i,
+  /✓ ready/i,
+  /server started/i,
+  /listening on/i,
+];
+
+function isSuccessLine(line: string): boolean {
+  return SUCCESS_PATTERNS.some((pattern) => pattern.test(line));
+}
+
+// ============================================================================
+// Log Size Capping
+// ============================================================================
+
+const MAX_LOG_SIZE = 1024 * 1024; // 1MB
+const TRUNCATE_TO_SIZE = 512 * 1024; // 500KB
+
+function truncateLogFile(logPath: string): void {
+  try {
+    const stat = statSync(logPath);
+    if (stat.size > MAX_LOG_SIZE) {
+      // Use tail to keep only the last ~500KB
+      const output = Bun.spawnSync(["tail", "-c", String(TRUNCATE_TO_SIZE), logPath]);
+      if (output.exitCode === 0) {
+        writeFileSync(logPath, output.stdout);
+      }
+    }
+  } catch {
+    // Ignore errors - file may not exist yet or truncation failed
+  }
+}
+
+// ============================================================================
 // Metadata Management
 // ============================================================================
 
@@ -200,6 +245,7 @@ async function runCommand(args: string[], sessionNameOverride?: string): Promise
     errorCount: 0,
     lastError: null,
     lastErrorAt: null,
+    lastSuccessAt: null,
   };
 
   console.error(`[siphon] Session: ${sessionName}`);
@@ -232,11 +278,66 @@ async function runCommand(args: string[], sessionNameOverride?: string): Promise
   process.on("SIGINT", () => proc.kill("SIGINT"));
   process.on("SIGTERM", () => proc.kill("SIGTERM"));
 
+  // Background log monitoring for real-time error/success detection
+  let lastProcessedLine = 0;
+  const monitorInterval = setInterval(() => {
+    try {
+      // Cap log size periodically
+      truncateLogFile(logPath);
+
+      if (!existsSync(logPath)) return;
+
+      const logContent = readFileSync(logPath, "utf-8");
+      const lines = logContent.split("\n");
+
+      // Only process new lines since last check
+      for (let i = lastProcessedLine; i < lines.length; i++) {
+        const line = lines[i];
+
+        // Port detection
+        if (meta.port === null) {
+          const port = detectPort(line);
+          if (port) {
+            meta.port = port;
+            writeMeta(metaPath, meta);
+          }
+        }
+
+        // Success detection - reset error state when build succeeds
+        if (isSuccessLine(line)) {
+          meta.errorCount = 0;
+          meta.lastError = null;
+          meta.lastErrorAt = null;
+          meta.lastSuccessAt = new Date().toISOString();
+          writeMeta(metaPath, meta);
+        }
+
+        // Error detection
+        if (isErrorLine(line)) {
+          meta.errorCount++;
+          meta.lastError = line.slice(0, 200);
+          meta.lastErrorAt = new Date().toISOString();
+          writeMeta(metaPath, meta);
+        }
+      }
+
+      lastProcessedLine = lines.length;
+    } catch {
+      // Ignore monitoring errors
+    }
+  }, 2000); // Check every 2 seconds
+
   // Wait for process to exit
   const exitCode = await proc.exited;
 
+  // Stop monitoring
+  clearInterval(monitorInterval);
+
   // Post-process log file to update metadata
   try {
+    // Cap log file size before processing
+    truncateLogFile(logPath);
+
     const logContent = readFileSync(logPath, "utf-8");
     const lines = logContent.split("\n");
 
@@ -247,6 +348,14 @@ async function runCommand(args: string[], sessionNameOverride?: string): Promise
         if (port) {
           meta.port = port;
         }
+      }
+
+      // Success detection - reset error state when build succeeds
+      if (isSuccessLine(line)) {
+        meta.errorCount = 0;
+        meta.lastError = null;
+        meta.lastErrorAt = null;
+        meta.lastSuccessAt = new Date().toISOString();
       }
 
       // Error detection

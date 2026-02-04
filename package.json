@@ -1,14 +1,20 @@
 {
   "name": "siphon-dev",
-  "version": "0.1.0",
-  "description": "Runtime context for coding agents",
+  "version": "0.1.1",
+  "description": "Runtime context for coding agents - captures dev server output for AI assistants",
   "type": "module",
   "bin": {
-    "siphon": "dist/siphon",
-    "siphon-mcp": "dist/siphon-mcp"
+    "siphon": "dist/siphon.js",
+    "siphon-mcp": "dist/siphon-mcp.js"
   },
+  "files": [
+    "dist/*.js"
+  ],
   "scripts": {
-    "build": "bun build src/siphon.ts --compile --outfile dist/siphon && bun build src/siphon-mcp.ts --compile --outfile dist/siphon-mcp"
+    "build": "bun run build:npm",
+    "build:npm": "printf '#!/usr/bin/env node\\n' | cat - <(bun build src/siphon.ts --target node | tail -n +2) > dist/siphon.js && printf '#!/usr/bin/env node\\n' | cat - <(bun build src/siphon-mcp.ts --target node | tail -n +2) > dist/siphon-mcp.js && chmod +x dist/*.js",
+    "build:bin": "bun build src/siphon.ts --compile --outfile dist/siphon && bun build src/siphon-mcp.ts --compile --outfile dist/siphon-mcp",
+    "prepublishOnly": "bun run build:npm"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
@@ -21,8 +27,21 @@
     "debugging",
     "coding-agent",
     "claude",
-    "cursor"
+    "cursor",
+    "dev-server",
+    "runtime-context"
   ],
   "author": "",
-  "license": "MIT"
+  "license": "BSL-1.1",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jpbonch/siphon.git"
+  },
+  "homepage": "https://github.com/jpbonch/siphon#readme",
+  "bugs": {
+    "url": "https://github.com/jpbonch/siphon/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  }
 }

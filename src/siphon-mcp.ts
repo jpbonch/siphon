@@ -2,11 +2,14 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { readdirSync, readFileSync, existsSync, writeFileSync } from "fs";
-import { execSync } from "child_process";
+import { exec, execSync } from "child_process";
+import { promisify } from "util";
 import { homedir } from "os";
 import { join } from "path";
 import { z } from "zod";
 import { extractErrors, generateHint, type ParsedError, type SessionMeta } from "./errors.js";
+
+const execAsync = promisify(exec);
 
 const SIPHON_DIR = `${homedir()}/.siphon`;
 
@@ -26,6 +29,7 @@ interface FullSessionMeta {
   errorCount: number;
   lastError: string | null;
   lastErrorAt: string | null;
+  lastSuccessAt?: string | null;
 }
 
 // ============================================================================
@@ -120,6 +124,90 @@ function getLastNLines(logPath: string, n: number): string {
 }
 
 // ============================================================================
+// ANSI Stripping
+// ============================================================================
+
+function stripAnsi(str: string): string {
+  // Remove ANSI escape codes (colors, cursor movement, etc.)
+  return str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
+}
+
+// ============================================================================
+// Uncaptured Process Detection
+// ============================================================================
+
+interface UncapturedProcess {
+  command: string;
+  pid: number;
+  port: number;
+}
+
+async function detectUncapturedProcesses(
+  siphonPorts: Set<number>
+): Promise<UncapturedProcess[]> {
+  const devProcesses = [
+    "node", "python", "python3", "ruby", "cargo", "go",
+    "java", "bun", "deno", "uvicorn", "gunicorn", "next-server", "vite"
+  ];
+
+  try {
+    const { stdout } = await execAsync(
+      process.platform === "darwin"
+        ? "lsof -iTCP -sTCP:LISTEN -P -n 2>/dev/null"
+        : "ss -tlnp 2>/dev/null"
+    );
+
+    const results: UncapturedProcess[] = [];
+
+    for (const line of stdout.split("\n")) {
+      if (process.platform === "darwin") {
+        // lsof format: COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME
+        // Example: node 12345 user 22u IPv4 ... TCP *:3000 (LISTEN)
+        const match = line.match(/^(\S+)\s+(\d+)\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\*:(\d+)/);
+        if (match) {
+          const command = match[1].toLowerCase();
+          const pid = parseInt(match[2], 10);
+          const port = parseInt(match[3], 10);
+
+          // Filter: port 3000-9999, not already tracked by siphon, matches dev processes
+          if (
+            port >= 3000 &&
+            port <= 9999 &&
+            !siphonPorts.has(port) &&
+            devProcesses.some(proc => command.includes(proc))
+          ) {
+            results.push({ command: match[1], pid, port });
+          }
+        }
+      } else {
+        // ss format varies, but typically: LISTEN 0 128 *:3000 *:* users:(("node",pid=12345,fd=22))
+        const portMatch = line.match(/\*:(\d+)/);
+        const processMatch = line.match(/\(\("([^"]+)",pid=(\d+)/);
+
+        if (portMatch && processMatch) {
+          const port = parseInt(portMatch[1], 10);
+          const command = processMatch[1].toLowerCase();
+          const pid = parseInt(processMatch[2], 10);
+
+          if (
+            port >= 3000 &&
+            port <= 9999 &&
+            !siphonPorts.has(port) &&
+            devProcesses.some(proc => command.includes(proc))
+          ) {
+            results.push({ command: processMatch[1], pid, port });
+          }
+        }
+      }
+    }
+
+    return results;
+  } catch {
+    return []; // lsof/ss not available or failed
+  }
+}
+
+// ============================================================================
 // MCP Server
 // ============================================================================
 
@@ -153,17 +241,41 @@ This is the most useful tool for understanding what's happening in the applicati
   async ({ session }) => {
     let sessions = getAllSessions();
 
+    // Collect ports that siphon is tracking
+    const siphonPorts = new Set<number>();
+    for (const { meta } of sessions) {
+      if (meta.port) {
+        siphonPorts.add(meta.port);
+      }
+    }
+
+    // Detect uncaptured dev processes
+    const uncapturedProcesses = await detectUncapturedProcesses(siphonPorts);
+
     if (sessions.length === 0) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `No siphon sessions found.
+      let message = `No siphon sessions found.
 
 To start capturing output, run your dev server with siphon:
   siphon -- npm run dev
 
-Or run 'siphon init' to set up automatic capture for this project.`,
+Or run 'siphon init' to set up automatic capture for this project.`;
+
+      // Alert about uncaptured processes even when no sessions
+      if (uncapturedProcesses.length > 0) {
+        message += `\n\n---\n\n`;
+        message += `\u26a0 Dev processes running WITHOUT siphon:\n`;
+        for (const proc of uncapturedProcesses) {
+          message += `  port ${proc.port} \u2014 ${proc.command} (pid ${proc.pid})\n`;
+        }
+        message += `\n  Siphon can't see their output. Restart with:\n`;
+        message += `    siphon -- <original command>`;
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: message,
           },
         ],
       };
@@ -189,6 +301,8 @@ Or run 'siphon init' to set up automatic capture for this project.`,
     const output: string[] = [];
     const allErrors: ParsedError[] = [];
     const sessionMetas: SessionMeta[] = [];
+    let latestErrorAt: string | null = null;
+    let latestSuccessAt: string | null = null;
 
     for (const { meta, logPath } of sessions) {
       // Build status line
@@ -199,15 +313,28 @@ Or run 'siphon init' to set up automatic capture for this project.`,
 
       let statusLine: string;
       if (meta.status === "running") {
-        statusLine = `${meta.session} — running (${portInfo}${pidInfo}, started ${ago})`;
+        statusLine = `${meta.session} \u2014 running (${portInfo}${pidInfo}, started ${ago})`;
       } else {
-        const exitInfo = meta.exitCode !== null ? `with code ${meta.exitCode}` : "(stale — process no longer running)";
-        statusLine = `${meta.session} — exited ${exitInfo} (stopped ${ago})`;
+        const exitInfo = meta.exitCode !== null ? `with code ${meta.exitCode}` : "(stale \u2014 process no longer running)";
+        statusLine = `${meta.session} \u2014 exited ${exitInfo} (stopped ${ago})`;
       }
       output.push(statusLine);
 
-      // Extract errors from log
-      const logContent = getLastNLines(logPath, 200);
+      // Track latest error/success times for age context
+      if (meta.lastErrorAt) {
+        if (!latestErrorAt || meta.lastErrorAt > latestErrorAt) {
+          latestErrorAt = meta.lastErrorAt;
+        }
+      }
+      if (meta.lastSuccessAt) {
+        if (!latestSuccessAt || meta.lastSuccessAt > latestSuccessAt) {
+          latestSuccessAt = meta.lastSuccessAt;
+        }
+      }
+
+      // Extract errors from log (strip ANSI codes first)
+      const rawLogContent = getLastNLines(logPath, 200);
+      const logContent = stripAnsi(rawLogContent);
       const errors = extractErrors(logContent);
 
       // Limit to 5 errors per session
@@ -252,10 +379,33 @@ Or run 'siphon init' to set up automatic capture for this project.`,
       });
     }
 
-    // Generate hint
-    const hint = generateHint(allErrors, sessionMetas);
+    // Generate hint with error age context
+    let hint = generateHint(allErrors, sessionMetas);
+    if (hint && latestErrorAt) {
+      const errorAge = Date.now() - new Date(latestErrorAt).getTime();
+      const ageMinutes = Math.floor(errorAge / 60000);
+
+      // If there's been a success since the error, note that
+      if (latestSuccessAt && latestSuccessAt > latestErrorAt) {
+        hint += ` (build succeeded since last error \u2014 errors may be resolved)`;
+      } else if (ageMinutes > 5) {
+        hint += ` (last error ${ageMinutes}m ago \u2014 may already be resolved)`;
+      }
+    }
     if (hint) {
       output.push(`hint: ${hint}`);
+    }
+
+    // Add uncaptured processes warning at the end
+    if (uncapturedProcesses.length > 0) {
+      output.push("");
+      output.push(`\u26a0 Dev processes running WITHOUT siphon:`);
+      for (const proc of uncapturedProcesses) {
+        output.push(`  port ${proc.port} \u2014 ${proc.command} (pid ${proc.pid})`);
+      }
+      output.push("");
+      output.push(`  Siphon can't see their output. Restart with:`);
+      output.push(`    siphon -- <original command>`);
     }
 
     return {
@@ -341,7 +491,8 @@ Usually check_status is sufficient. Use this for deeper investigation.`,
       };
     }
 
-    let output = getLastNLines(logPath, lines);
+    // Get raw output and strip ANSI codes
+    let output = stripAnsi(getLastNLines(logPath, lines));
 
     // Apply grep filter if provided
     if (grep) {

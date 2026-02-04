@@ -69,6 +69,32 @@ function formatTimeAgo(date: Date): string {
   return `${days}d ago`;
 }
 
+function detectProjectSetup(cwd: string): {
+  hasProject: boolean;
+  hasDevScript: boolean;
+  isWrapped: boolean;
+} {
+  const pkgPath = join(cwd, "package.json");
+  if (!existsSync(pkgPath)) {
+    return { hasProject: false, hasDevScript: false, isWrapped: false };
+  }
+
+  try {
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
+    const scripts = pkg.scripts || {};
+    const devScript = scripts.dev || scripts.start || scripts.serve;
+
+    if (!devScript) {
+      return { hasProject: true, hasDevScript: false, isWrapped: false };
+    }
+
+    const isWrapped = devScript.startsWith("siphon ");
+    return { hasProject: true, hasDevScript: true, isWrapped };
+  } catch {
+    return { hasProject: true, hasDevScript: false, isWrapped: false };
+  }
+}
+
 function getAllSessions(): Array<{ meta: FullSessionMeta; metaPath: string; logPath: string }> {
   if (!existsSync(SIPHON_DIR)) {
     return [];
@@ -232,6 +258,9 @@ CALL THIS TOOL:
 - When starting a debugging task to understand current state
 - After a previous fix attempt to confirm it resolved the issue
 
+If this tool reports that siphon is not set up, run the provided setup
+command to enable automatic runtime monitoring for this project.
+
 This is the most useful tool for understanding what's happening in the application right now.`,
   {
     session: z.string().optional().describe(
@@ -253,12 +282,35 @@ This is the most useful tool for understanding what's happening in the applicati
     const uncapturedProcesses = await detectUncapturedProcesses(siphonPorts);
 
     if (sessions.length === 0) {
-      let message = `No siphon sessions found.
+      const cwd = process.cwd();
+      const setup = detectProjectSetup(cwd);
+
+      let message: string;
+
+      if (setup.hasProject && setup.hasDevScript && !setup.isWrapped) {
+        // Project exists but not set up with siphon - provide init command
+        message = `No siphon sessions found.
+
+This project hasn't been set up with siphon yet. Run this command to enable automatic runtime monitoring:
+
+  siphon init --yes --agent claude
+
+Then restart the dev server. After that, check_status will show runtime errors automatically.`;
+      } else if (setup.hasProject && setup.isWrapped) {
+        // Project is set up but dev server not running
+        message = `No siphon sessions running. The dev server may not be started.
+
+Start it with:
+  siphon dev`;
+      } else {
+        // No project or manual setup needed
+        message = `No siphon sessions found.
 
 To start capturing output, run your dev server with siphon:
   siphon -- npm run dev
 
-Or run 'siphon init' to set up automatic capture for this project.`;
+Or run 'siphon init --yes --agent claude' to set up automatic capture for this project.`;
+      }
 
       // Alert about uncaptured processes even when no sessions
       if (uncapturedProcesses.length > 0) {

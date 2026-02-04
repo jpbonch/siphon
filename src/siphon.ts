@@ -717,8 +717,14 @@ function appendInstructions(filePath: string): boolean {
   return true;
 }
 
-async function initProject(): Promise<void> {
+interface InitOptions {
+  yes?: boolean;
+  agent?: "claude" | "cursor" | "both";
+}
+
+async function initProject(options: InitOptions = {}): Promise<void> {
   const cwd = process.cwd();
+  const isInteractive = process.stdin.isTTY ?? false;
 
   // Step 1: Check for empty directory
   if (!hasProjectFiles(cwd)) {
@@ -746,12 +752,19 @@ Run 'siphon init' again once your project is set up.`);
 
     if (!currentScript.startsWith("siphon ")) {
       console.log(`Detected dev command: "${currentScript}" (from package.json "${devInfo.script}" script)`);
-      const answer = await prompt("Wrap it with siphon so output is automatically captured? (y/n) ");
 
-      if (answer.toLowerCase() === "y" || answer.toLowerCase() === "yes") {
-        if (wrapDevScript(cwd)) {
-          actions.push(`Wrapped "${devInfo.script}" script with siphon in package.json`);
-        }
+      let shouldWrap = false;
+      if (options.yes || !isInteractive) {
+        // Auto-wrap when non-interactive or --yes flag
+        shouldWrap = true;
+        console.log("Auto-wrapping dev command with siphon.");
+      } else {
+        const answer = await prompt("Wrap it with siphon so output is automatically captured? (y/n) ");
+        shouldWrap = answer.toLowerCase() === "y" || answer.toLowerCase() === "yes";
+      }
+
+      if (shouldWrap && wrapDevScript(cwd)) {
+        actions.push(`Wrapped "${devInfo.script}" script with siphon in package.json`);
       }
     } else {
       console.log(`Dev script already wrapped with siphon.`);
@@ -760,31 +773,62 @@ Run 'siphon init' again once your project is set up.`);
 
   // Step 4: Detect or ask about agents
   if (!agents.claudeCode && !agents.cursor) {
-    console.log(`
+    // Check for --agent flag or non-interactive mode
+    if (options.agent) {
+      // Use specified agent
+      switch (options.agent) {
+        case "claude":
+          agents = { claudeCode: true, cursor: false };
+          console.log("Configuring for Claude Code (specified via --agent).");
+          break;
+        case "cursor":
+          agents = { claudeCode: false, cursor: true };
+          console.log("Configuring for Cursor (specified via --agent).");
+          break;
+        case "both":
+          agents = { claudeCode: true, cursor: true };
+          console.log("Configuring for Claude Code and Cursor (specified via --agent).");
+          break;
+      }
+    } else if (!isInteractive) {
+      // Non-interactive without --agent: auto-detect from environment or default to claude
+      const envAgent = process.env.CLAUDE_CODE ? "claude" : process.env.CURSOR_SESSION_ID ? "cursor" : null;
+      if (envAgent === "cursor") {
+        agents = { claudeCode: false, cursor: true };
+        console.log("Auto-detected Cursor environment. Configuring for Cursor.");
+      } else {
+        // Default to Claude Code in non-interactive mode
+        agents = { claudeCode: true, cursor: false };
+        console.log("Non-interactive mode: defaulting to Claude Code configuration.");
+      }
+    } else {
+      // Interactive mode: prompt user
+      console.log(`
 No coding agent configuration detected. Which do you use?
   1. Claude Code
   2. Cursor
   3. Both
   4. Other / Skip (you can run 'siphon init' again later)
 `);
-    const answer = await prompt("Enter choice (1-4): ");
+      const answer = await prompt("Enter choice (1-4): ");
 
-    switch (answer) {
-      case "1":
-        agents = { claudeCode: true, cursor: false };
-        break;
-      case "2":
-        agents = { claudeCode: false, cursor: true };
-        break;
-      case "3":
-        agents = { claudeCode: true, cursor: true };
-        break;
-      default:
-        console.log("\nSkipped agent configuration. Run 'siphon init' again any time to add it.");
-        if (actions.length > 0) {
-          console.log("\n" + actions.map((a) => `✓ ${a}`).join("\n"));
-        }
-        return;
+      switch (answer) {
+        case "1":
+          agents = { claudeCode: true, cursor: false };
+          break;
+        case "2":
+          agents = { claudeCode: false, cursor: true };
+          break;
+        case "3":
+          agents = { claudeCode: true, cursor: true };
+          break;
+        default:
+          console.log("\nSkipped agent configuration. Run 'siphon init' again any time to add it.");
+          if (actions.length > 0) {
+            console.log("\n" + actions.map((a) => `✓ ${a}`).join("\n"));
+          }
+          return;
+      }
     }
   } else {
     const detected = [];
@@ -846,7 +890,7 @@ function printUsage(): void {
 
 Usage:
   siphon -- <command> [args...]   Wrap a command and capture output
-  siphon init                      Set up siphon for this project
+  siphon init [options]            Set up siphon for this project
   siphon dev                       Run the project's dev command via siphon
   siphon list                      Show active/recent sessions
   siphon clean [--days N] [--all]  Remove old log files
@@ -855,10 +899,15 @@ Options:
   --name <name>   Override the session name (use with --)
   --help          Show this help message
 
+Init options:
+  --yes, -y                     Auto-confirm all prompts (non-interactive)
+  --agent claude|cursor|both    Specify which agent to configure
+
 Examples:
   siphon -- npm run dev
   siphon --name my-app:frontend -- npm run dev
   siphon init
+  siphon init --yes --agent claude
   siphon dev
 `);
 }
@@ -875,9 +924,29 @@ async function main(): Promise<void> {
 
   // Handle subcommands
   switch (firstArg) {
-    case "init":
-      await initProject();
+    case "init": {
+      const initArgs = args.slice(1);
+      const initOptions: InitOptions = {};
+
+      for (let i = 0; i < initArgs.length; i++) {
+        const arg = initArgs[i];
+        if (arg === "--yes" || arg === "-y") {
+          initOptions.yes = true;
+        } else if (arg === "--agent" && initArgs[i + 1]) {
+          const agentValue = initArgs[i + 1].toLowerCase();
+          if (agentValue === "claude" || agentValue === "cursor" || agentValue === "both") {
+            initOptions.agent = agentValue;
+          } else {
+            console.error(`Invalid agent: ${initArgs[i + 1]}. Must be one of: claude, cursor, both`);
+            process.exit(1);
+          }
+          i++;
+        }
+      }
+
+      await initProject(initOptions);
       break;
+    }
 
     case "dev":
       await runDevCommand();

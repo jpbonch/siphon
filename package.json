@@ -1,6 +1,6 @@
 {
   "name": "siphon-dev",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Runtime context for coding agents - captures dev server output for AI assistants",
   "type": "module",
   "bin": {

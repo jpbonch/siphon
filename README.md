@@ -59,6 +59,12 @@ available but not yet connected. The user clicks that link, authenticates in a
 browser tab, then the agent calls `check_status` again to verify connection and
 fetch production service/process status.
 
+If you are using local API key auth, you can remove the saved key with:
+
+```bash
+siphon logout
+```
+
 ### View sessions
 
 ```bash

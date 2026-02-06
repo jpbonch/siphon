@@ -12,8 +12,8 @@ import {
 const PRODUCTION_FETCH_TIMEOUT_MS = 5000;
 const PRODUCTION_ERROR_LIMIT = 5;
 const MAX_RAW_RESPONSE_CHARS = 320;
-const AUTH_SESSION_PATH = "/v1/auth/session";
-const AUTH_POLL_PATH = "/v1/auth/poll";
+const AUTH_SESSION_PATH = "/auth/session";
+const AUTH_POLL_PATH = "/auth/poll";
 const CONTEXT_PATH = "/context";
 
 interface ProductionService {

@@ -12,7 +12,7 @@ CALL THIS TOOL:
 
 PRODUCTION CONTEXT:
 If authenticated, this tool also returns production errors from connected
-services (Sentry, Datadog, etc.) and team context.
+services and team context from Siphon Cloud.
 
 If the response includes an authentication link, share it with the user.
 After they click it and authenticate, call check_status again to verify

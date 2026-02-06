@@ -6,6 +6,7 @@ Usage:
   siphon init [options]            Set up siphon for this project
   siphon dev                       Run the project's dev command via siphon
   siphon login                     Save API key for production status context
+  siphon logout                    Remove saved API key from local config
   siphon list                      Show active/recent sessions
   siphon clean [--days N] [--all]  Remove old log files
 
@@ -24,4 +25,5 @@ Examples:
   siphon init --yes --agent claude
   siphon dev
   siphon login
+  siphon logout
 `;

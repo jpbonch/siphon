@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "fs";
 import { homedir } from "os";
 import { dirname, join } from "path";
 
@@ -49,4 +49,17 @@ export function getApiKey(): string | null {
 
 export function isAuthenticated(): boolean {
   return getApiKey() !== null;
+}
+
+export function clearApiKey(): boolean {
+  if (!existsSync(SIPHON_AUTH_FILE_PATH)) {
+    return false;
+  }
+
+  try {
+    unlinkSync(SIPHON_AUTH_FILE_PATH);
+    return true;
+  } catch {
+    return false;
+  }
 }

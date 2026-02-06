@@ -7,6 +7,7 @@ import { runCommand } from "./commands/run-command";
 import { runDevCommand } from "./commands/dev";
 import { initProject } from "./commands/init";
 import { runLoginCommand } from "./commands/login";
+import { runLogoutCommand } from "./commands/logout";
 import { getAllAgentIds } from "../agents";
 
 function printUsage(): void {
@@ -88,6 +89,11 @@ export async function runCli(argv: string[]): Promise<void> {
 
     case "login": {
       await runLoginCommand();
+      break;
+    }
+
+    case "logout": {
+      await runLogoutCommand();
       break;
     }
 

@@ -52,6 +52,13 @@ This will:
 2. Configure MCP for Claude Code and/or Cursor
 3. Add debugging instructions to CLAUDE.md or .cursorrules
 
+### Authenticate for production context
+
+`check_status` can return an authentication link when production context is
+available but not yet connected. The user clicks that link, authenticates in a
+browser tab, then the agent calls `check_status` again to verify connection and
+fetch production service/process status.
+
 ### View sessions
 
 ```bash
@@ -72,8 +79,9 @@ Once configured, your AI assistant has access to:
 
 ### `check_status`
 
-Quick health check across all running dev processes. Shows:
-- Running/crashed processes
+Quick health check across local dev processes and (when authenticated) production services. Shows:
+- Running/crashed local processes
+- Production service/process status and team context
 - Recent errors with stack traces
 - Hints for fixing issues
 

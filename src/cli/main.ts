@@ -1,6 +1,6 @@
 import { ensureSiphonDir } from "./config/paths";
 import { CLI_USAGE_TEXT } from "./config/usage";
-import type { CleanOptions, InitOptions } from "./types";
+import type { CleanOptions } from "./types";
 import { cleanSessions } from "./session/clean";
 import { listSessions } from "./session/list";
 import { runCommand } from "./commands/run-command";
@@ -8,40 +8,9 @@ import { runDevCommand } from "./commands/dev";
 import { initProject } from "./commands/init";
 import { runLoginCommand } from "./commands/login";
 import { runLogoutCommand } from "./commands/logout";
-import { getAllAgentIds } from "../agents";
 
 function printUsage(): void {
   console.log(CLI_USAGE_TEXT);
-}
-
-function parseInitOptions(args: string[]): InitOptions {
-  const options: InitOptions = {};
-  const validAgentIds = getAllAgentIds();
-  const validAgents = new Set(["both", ...validAgentIds]);
-
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-
-    if (arg === "--yes" || arg === "-y") {
-      options.yes = true;
-      continue;
-    }
-
-    if (arg === "--agent" && args[i + 1]) {
-      const requestedAgent = args[i + 1].toLowerCase();
-      if (!validAgents.has(requestedAgent)) {
-        console.error(
-          `Invalid agent: ${args[i + 1]}. Must be one of: ${[...validAgentIds, "both"].join(", ")}`
-        );
-        process.exit(1);
-      }
-
-      options.agent = requestedAgent;
-      i++;
-    }
-  }
-
-  return options;
 }
 
 function parseCleanOptions(args: string[]): CleanOptions {
@@ -78,7 +47,7 @@ export async function runCli(argv: string[]): Promise<void> {
 
   switch (firstArg) {
     case "init": {
-      await initProject(parseInitOptions(args.slice(1)));
+      await initProject();
       break;
     }
 

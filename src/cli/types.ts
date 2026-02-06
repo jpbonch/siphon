@@ -14,12 +14,6 @@ export interface SessionMeta {
   lastSuccessAt: string | null;
 }
 
-// `siphon init` command options.
-export interface InitOptions {
-  yes?: boolean;
-  agent?: string;
-}
-
 // `siphon clean` command options.
 export interface CleanOptions {
   days?: number;

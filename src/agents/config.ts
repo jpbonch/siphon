@@ -1,16 +1,20 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import { dirname } from "path";
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "fs";
+import { dirname, join } from "path";
 import type { Agent } from "./types";
 
 interface McpConfigShape {
   mcpServers?: Record<string, unknown>;
 }
 
-// Shared MCP entry for Siphon. Keep this in one place so users can tweak it.
-const SIPHON_MCP_ENTRY = {
-  command: "siphon-mcp",
-  args: [],
-};
+// Resolve the absolute path to siphon-mcp.js next to the running CLI script.
+// Works both for global npm installs (resolves through symlinks) and local dev builds.
+function getSiphonMcpEntry() {
+  const scriptDir = dirname(realpathSync(process.argv[1]));
+  return {
+    command: "node",
+    args: [join(scriptDir, "siphon-mcp.js")],
+  };
+}
 
 // Writes MCP config for a specific agent; returns false if already configured.
 export function writeMcpConfig(agent: Agent): boolean {
@@ -39,7 +43,7 @@ export function writeMcpConfig(agent: Agent): boolean {
     config = { mcpServers: {} };
   }
 
-  config.mcpServers!["siphon"] = SIPHON_MCP_ENTRY;
+  config.mcpServers!["siphon"] = getSiphonMcpEntry();
   writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n");
 
   return true;

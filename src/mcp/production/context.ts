@@ -1,5 +1,11 @@
 import { getApiKey } from "../../auth/credentials";
-import { SIPHON_CLOUD_BASE_URL } from "../config/server";
+import {
+  buildCloudUrl,
+  createAuthSession,
+  fetchJsonWithTimeout,
+  pollAuthSession,
+} from "../../auth/session";
+import { SIPHON_CLOUD_WEBSITE_URL } from "../config/server";
 import {
   clearCloudToken,
   clearPendingAuthSession,
@@ -9,11 +15,8 @@ import {
   savePendingAuthSession,
 } from "./cloud-config";
 
-const PRODUCTION_FETCH_TIMEOUT_MS = 5000;
 const PRODUCTION_ERROR_LIMIT = 5;
 const MAX_RAW_RESPONSE_CHARS = 320;
-const AUTH_SESSION_PATH = "/auth/session";
-const AUTH_POLL_PATH = "/auth/poll";
 const CONTEXT_PATH = "/context";
 
 interface ProductionService {
@@ -28,21 +31,6 @@ interface ProductionError {
   message: string;
   timestamp: string | null;
 }
-
-interface PollResultPending {
-  status: "pending";
-}
-
-interface PollResultComplete {
-  status: "complete";
-  token: string;
-}
-
-interface PollResultRestart {
-  status: "restart";
-}
-
-type PollResult = PollResultPending | PollResultComplete | PollResultRestart;
 
 interface TokenResolution {
   token: string | null;
@@ -127,12 +115,8 @@ function safeValueSnippet(value: unknown, maxLength: number): string {
   }
 }
 
-function buildCloudUrl(path: string): string {
-  return new URL(path, `${SIPHON_CLOUD_BASE_URL.replace(/\/+$/, "")}/`).toString();
-}
-
 function buildAuthLink(sessionId: string): string {
-  return buildCloudUrl(`/auth/${encodeURIComponent(sessionId)}`);
+  return `${SIPHON_CLOUD_WEBSITE_URL}/login?session=${encodeURIComponent(sessionId)}`;
 }
 
 function buildAuthPromptLines(sessionId: string): string[] {
@@ -141,95 +125,10 @@ function buildAuthPromptLines(sessionId: string): string[] {
     "No production context available.",
     "",
     "To connect Sentry, Datadog, and team features:",
-    `→ Click to authenticate: ${buildAuthLink(sessionId)}`,
+    `→ Log in at: ${buildAuthLink(sessionId)}`,
     "",
-    "After clicking, run check_status again to verify connection.",
+    "After logging in, run check_status again to verify connection.",
   ];
-}
-
-async function fetchJsonWithTimeout(url: string, init: RequestInit): Promise<{ response: Response; body: unknown }> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), PRODUCTION_FETCH_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(url, {
-      ...init,
-      signal: controller.signal,
-    });
-
-    const rawBody = await response.text();
-    let body: unknown = null;
-
-    if (rawBody.trim()) {
-      try {
-        body = JSON.parse(rawBody);
-      } catch {
-        body = rawBody;
-      }
-    }
-
-    return { response, body };
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
-async function createAuthSession(): Promise<string | null> {
-  const url = buildCloudUrl(AUTH_SESSION_PATH);
-  const { response, body } = await fetchJsonWithTimeout(url, {
-    method: "GET",
-    headers: {
-      Accept: "application/json",
-    },
-  });
-
-  if (!response.ok) {
-    return null;
-  }
-
-  const bodyRecord = asRecord(body);
-  if (!bodyRecord) {
-    return null;
-  }
-
-  return getString(bodyRecord, ["sessionId", "session_id"]);
-}
-
-async function pollAuthSession(sessionId: string): Promise<PollResult> {
-  const url = buildCloudUrl(`${AUTH_POLL_PATH}/${encodeURIComponent(sessionId)}`);
-  const { response, body } = await fetchJsonWithTimeout(url, {
-    method: "GET",
-    headers: {
-      Accept: "application/json",
-    },
-  });
-
-  if (response.status === 202) {
-    return { status: "pending" };
-  }
-
-  if (response.status === 404 || response.status === 410) {
-    return { status: "restart" };
-  }
-
-  if (!response.ok) {
-    return { status: "pending" };
-  }
-
-  const bodyRecord = asRecord(body);
-  if (!bodyRecord) {
-    return { status: "pending" };
-  }
-
-  const token = getString(bodyRecord, ["token", "accessToken", "access_token"]);
-  if (!token) {
-    return { status: "pending" };
-  }
-
-  return {
-    status: "complete",
-    token,
-  };
 }
 
 async function resolveToken(): Promise<TokenResolution> {

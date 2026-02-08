@@ -43,21 +43,35 @@ function buildNoSessionMessage(uncapturedProcessLines: string): string {
   );
 }
 
-function buildUncapturedProcessBlock(processes: Array<{ port: number; command: string; pid: number }>): string {
+function formatUncapturedProcessLines(processes: Array<{ port: number; command: string; pid: number; fullArgs?: string }>): string[] {
+  const lines: string[] = [];
+  lines.push("⚠ Dev processes running WITHOUT siphon:");
+
+  for (const proc of processes) {
+    lines.push(`  port ${proc.port} — ${proc.command} (pid ${proc.pid})`);
+    if (proc.fullArgs) {
+      lines.push(`    command: ${proc.fullArgs}`);
+    }
+  }
+
+  lines.push("");
+  lines.push("  To capture this process, it needs to be restarted through siphon.");
+  lines.push("  Ask the user if they want to restart it:");
+
+  for (const proc of processes) {
+    const cmd = proc.fullArgs || "<original command>";
+    lines.push(`    kill ${proc.pid} && siphon -- ${cmd}`);
+  }
+
+  return lines;
+}
+
+function buildUncapturedProcessBlock(processes: Array<{ port: number; command: string; pid: number; fullArgs?: string }>): string {
   if (processes.length === 0) {
     return "";
   }
 
-  let message = "\n\n---\n\n";
-  message += "⚠ Dev processes running WITHOUT siphon:\n";
-
-  for (const process of processes) {
-    message += `  port ${process.port} — ${process.command} (pid ${process.pid})\n`;
-  }
-
-  message += "\n  Siphon can't see their output. Restart with:\n";
-  message += "    siphon -- <original command>";
-  return message;
+  return "\n\n---\n\n" + formatUncapturedProcessLines(processes).join("\n");
 }
 
 // Register `check_status` tool on the provided MCP server.
@@ -214,15 +228,7 @@ export function registerCheckStatusTool(server: McpServer): void {
 
       if (uncapturedProcesses.length > 0) {
         output.push("");
-        output.push("⚠ Dev processes running WITHOUT siphon:");
-
-        for (const process of uncapturedProcesses) {
-          output.push(`  port ${process.port} — ${process.command} (pid ${process.pid})`);
-        }
-
-        output.push("");
-        output.push("  Siphon can't see their output. Restart with:");
-        output.push("    siphon -- <original command>");
+        output.push(...formatUncapturedProcessLines(uncapturedProcesses));
       }
 
       const productionContextLines = await getProductionContextLines({

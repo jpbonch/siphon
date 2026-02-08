@@ -26,4 +26,5 @@ export interface UncapturedProcess {
   command: string;
   pid: number;
   port: number;
+  fullArgs?: string;
 }

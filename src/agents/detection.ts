@@ -19,7 +19,14 @@ export function detectAgentsInProject(cwd: string): string[] {
 }
 
 // Determine active agent from environment hints when available.
+// Checks the SIPHON_AGENT env var set in the MCP config first,
+// then falls back to agent-specific env vars.
 export function detectAgentFromEnvironment(): string | null {
+  const siphonAgent = process.env.SIPHON_AGENT;
+  if (siphonAgent && agents[siphonAgent]) {
+    return siphonAgent;
+  }
+
   for (const [id, agent] of Object.entries(agents)) {
     if (agent.envVariable && process.env[agent.envVariable]) {
       return id;

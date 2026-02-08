@@ -20,7 +20,8 @@ To make this permanent, edit the project's dev scripts, for example:
 PRODUCTION CONTEXT:
 If authenticated, this tool also returns production errors from connected
 services (Sentry, Datadog) and team context from Siphon Cloud.
-If the response includes an authentication link, share it with the user.
+IMPORTANT: If the response includes an authentication URL, you MUST display
+the full URL to the user exactly as shown — do NOT paraphrase or summarize it.
 After they authenticate, call check_status again.`;
 
 export const GET_OUTPUT_TOOL_DESCRIPTION = `Get raw log output from a siphon session. Use when check_status doesn't

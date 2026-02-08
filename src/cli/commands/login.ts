@@ -1,5 +1,6 @@
 import { exec } from "child_process";
 import { createAuthSession, pollAuthSession } from "../../auth/session";
+import { detectAgentFromEnvironment } from "../../agents/detection";
 import { SIPHON_CLOUD_WEBSITE_URL } from "../../mcp/config/server";
 import { saveCloudToken } from "../../mcp/production/cloud-config";
 
@@ -33,7 +34,9 @@ export async function runLoginCommand(): Promise<void> {
     process.exit(1);
   }
 
-  const loginUrl = `${SIPHON_CLOUD_WEBSITE_URL}/login?session=${encodeURIComponent(sessionId)}`;
+  const agentId = detectAgentFromEnvironment();
+  const agentParam = agentId ? `&agent=${encodeURIComponent(agentId)}` : "";
+  const loginUrl = `${SIPHON_CLOUD_WEBSITE_URL}/login?session=${encodeURIComponent(sessionId)}${agentParam}`;
 
   console.log(`Opening browser to sign in...`);
   console.log(`If the browser doesn't open, visit: ${loginUrl}`);

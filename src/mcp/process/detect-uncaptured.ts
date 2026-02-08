@@ -10,6 +10,26 @@ import type { UncapturedProcess } from "../types";
 
 const execAsync = promisify(exec);
 
+async function resolveProcessArgs(pid: number): Promise<string | null> {
+  try {
+    const { stdout } = await execAsync(`ps -p ${pid} -o args=`);
+    const trimmed = stdout.trim();
+    return trimmed || null;
+  } catch {
+    return null;
+  }
+}
+
+function simplifyCommand(args: string): string {
+  const match = args.match(/node\s+\S*node_modules\/\.bin\/(\S+)(.*)/);
+  if (match) {
+    const tool = match[1];
+    const rest = match[2].trim();
+    return rest ? `npx ${tool} ${rest}` : `npx ${tool}`;
+  }
+  return args;
+}
+
 // Find likely dev servers running outside siphon capture.
 export async function detectUncapturedProcesses(siphonPorts: Set<number>): Promise<UncapturedProcess[]> {
   try {
@@ -61,6 +81,15 @@ export async function detectUncapturedProcesses(siphonPorts: Set<number>): Promi
         results.push({ command: processMatch[1], pid, port });
       }
     }
+
+    await Promise.all(
+      results.map(async (proc) => {
+        const args = await resolveProcessArgs(proc.pid);
+        if (args) {
+          proc.fullArgs = simplifyCommand(args);
+        }
+      })
+    );
 
     return results;
   } catch {

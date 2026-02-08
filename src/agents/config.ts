@@ -8,11 +8,12 @@ interface McpConfigShape {
 
 // Resolve the absolute path to siphon-mcp.js next to the running CLI script.
 // Works both for global npm installs (resolves through symlinks) and local dev builds.
-function getSiphonMcpEntry() {
+function getSiphonMcpEntry(agent: Agent) {
   const scriptDir = dirname(realpathSync(process.argv[1]));
   return {
     command: "node",
     args: [join(scriptDir, "siphon-mcp.js")],
+    env: { SIPHON_AGENT: agent.id },
   };
 }
 
@@ -43,7 +44,7 @@ export function writeMcpConfig(agent: Agent): boolean {
     config = { mcpServers: {} };
   }
 
-  config.mcpServers!["siphon"] = getSiphonMcpEntry();
+  config.mcpServers!["siphon"] = getSiphonMcpEntry(agent);
   writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n");
 
   return true;

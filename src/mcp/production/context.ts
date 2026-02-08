@@ -1,10 +1,10 @@
-import { getApiKey } from "../../auth/credentials";
 import {
   buildCloudUrl,
   createAuthSession,
   fetchJsonWithTimeout,
   pollAuthSession,
 } from "../../auth/session";
+import { detectAgentFromEnvironment } from "../../agents/detection";
 import { SIPHON_CLOUD_WEBSITE_URL } from "../config/server";
 import {
   clearCloudToken,
@@ -34,7 +34,7 @@ interface ProductionError {
 
 interface TokenResolution {
   token: string | null;
-  source: "cloud-token" | "legacy-api-key" | null;
+  source: "cloud-token" | null;
   sessionId: string | null;
 }
 
@@ -116,18 +116,24 @@ function safeValueSnippet(value: unknown, maxLength: number): string {
 }
 
 function buildAuthLink(sessionId: string): string {
-  return `${SIPHON_CLOUD_WEBSITE_URL}/login?session=${encodeURIComponent(sessionId)}`;
+  const base = `${SIPHON_CLOUD_WEBSITE_URL}/login?session=${encodeURIComponent(sessionId)}`;
+  const agentId = detectAgentFromEnvironment();
+  if (agentId) {
+    return `${base}&agent=${encodeURIComponent(agentId)}`;
+  }
+  return base;
 }
 
 function buildAuthPromptLines(sessionId: string): string[] {
+  const url = buildAuthLink(sessionId);
   return [
     "=== Production services ===",
-    "No production context available.",
+    "Not connected. To connect production services and team features, the user needs to sign up.",
     "",
-    "To connect Sentry, Datadog, and team features:",
-    `→ Log in at: ${buildAuthLink(sessionId)}`,
+    `Auth URL (display this full URL to the user): ${url}`,
+    "Or ask your admin to invite you to a team.",
     "",
-    "After logging in, run check_status again to verify connection.",
+    "After signing up, run check_status again to verify connection.",
   ];
 }
 
@@ -164,15 +170,6 @@ async function resolveToken(): Promise<TokenResolution> {
     }
 
     clearPendingAuthSession();
-  }
-
-  const legacyApiKey = getApiKey();
-  if (legacyApiKey) {
-    return {
-      token: legacyApiKey,
-      source: "legacy-api-key",
-      sessionId: null,
-    };
   }
 
   const newSessionId = await createAuthSession();
@@ -431,12 +428,17 @@ export async function getProductionContextLines(localContext: ProductionContextI
     }
 
     const contextUrl = buildCloudUrl(CONTEXT_PATH);
+    const agentId = detectAgentFromEnvironment();
+    const headers: Record<string, string> = {
+      Accept: "application/json",
+      Authorization: `Bearer ${resolved.token}`,
+    };
+    if (agentId) {
+      headers["X-Siphon-Agent"] = agentId;
+    }
     const { response, body } = await fetchJsonWithTimeout(contextUrl, {
       method: "GET",
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${resolved.token}`,
-      },
+      headers,
     });
 
     if (response.status === 401 || response.status === 403) {

@@ -49,3 +49,44 @@ export function writeMcpConfig(agent: Agent): boolean {
 
   return true;
 }
+
+const SIPHON_PERMISSIONS = [
+  "mcp__siphon__check_status",
+  "mcp__siphon__get_output",
+];
+
+// Writes auto-approve permissions for siphon MCP tools into the agent's settings file.
+export function writePermissions(agent: Agent): void {
+  if (!agent.settingsPath) return;
+
+  const settingsPath = agent.settingsPath;
+  const settingsDir = dirname(settingsPath);
+
+  if (!existsSync(settingsDir)) {
+    mkdirSync(settingsDir, { recursive: true });
+  }
+
+  let settings: Record<string, unknown> = {};
+
+  if (existsSync(settingsPath)) {
+    try {
+      settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+    } catch {
+      settings = {};
+    }
+  }
+
+  const permissions = (settings.permissions ?? {}) as Record<string, unknown>;
+  const allow = Array.isArray(permissions.allow) ? [...permissions.allow] as string[] : [];
+
+  for (const perm of SIPHON_PERMISSIONS) {
+    if (!allow.includes(perm)) {
+      allow.push(perm);
+    }
+  }
+
+  permissions.allow = allow;
+  settings.permissions = permissions;
+
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+}

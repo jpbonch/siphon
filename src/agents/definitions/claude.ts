@@ -10,4 +10,5 @@ export const claudeAgent: Agent = {
   envVariable: "CLAUDE_CODE",
   globalConfigPath: join(homedir(), ".claude.json"),
   instructionsFile: "CLAUDE.md",
+  settingsPath: join(homedir(), ".claude", "settings.json"),
 };

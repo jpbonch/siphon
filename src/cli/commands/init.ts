@@ -1,4 +1,5 @@
 import { getAgentById, getAllAgentIds, writeMcpConfig } from "../../agents";
+import { writePermissions } from "../../agents/config";
 
 export async function initProject(): Promise<void> {
   const agentIds = getAllAgentIds();
@@ -8,6 +9,7 @@ export async function initProject(): Promise<void> {
     const agent = getAgentById(agentId);
     if (!agent) continue;
     writeMcpConfig(agent);
+    writePermissions(agent);
     configuredNames.push(agent.displayName);
   }
 

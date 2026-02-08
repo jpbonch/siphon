@@ -14,4 +14,7 @@ export interface Agent {
 
   // Project-local instructions file for this agent.
   instructionsFile: string;
+
+  // Global settings file for auto-approving MCP tool permissions.
+  settingsPath?: string;
 }

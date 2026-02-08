@@ -115,6 +115,21 @@ function safeValueSnippet(value: unknown, maxLength: number): string {
   }
 }
 
+function formatSlackTimestamp(ts: string | null): string {
+  if (!ts) return "??:??";
+  try {
+    // Slack timestamps are Unix epoch seconds with decimal (e.g., "1234567890.123456")
+    const epochSeconds = parseFloat(ts);
+    if (!Number.isFinite(epochSeconds)) return ts;
+    const date = new Date(epochSeconds * 1000);
+    const hours = date.getHours().toString().padStart(2, "0");
+    const minutes = date.getMinutes().toString().padStart(2, "0");
+    return `${hours}:${minutes}`;
+  } catch {
+    return ts;
+  }
+}
+
 function buildAuthLink(sessionId: string): string {
   const base = `${SIPHON_CLOUD_WEBSITE_URL}/login?session=${encodeURIComponent(sessionId)}`;
   const agentId = detectAgentFromEnvironment();
@@ -385,7 +400,41 @@ function formatProductionPayload(payload: unknown, sourceUrl: string): string[] 
     }
   }
 
+  // Format integration context (Slack messages, etc.)
   const payloadRecord = asRecord(payload);
+  if (payloadRecord && Array.isArray(payloadRecord.integrations)) {
+    for (const integration of payloadRecord.integrations) {
+      const rec = asRecord(integration);
+      if (!rec) continue;
+
+      const provider = getString(rec, ["provider"]);
+      if (provider === "slack") {
+        const channelName = getString(rec, ["channelName"]) ?? "unknown";
+        const note = getString(rec, ["note"]);
+        const messages = Array.isArray(rec.messages) ? rec.messages : [];
+
+        lines.push("");
+        lines.push(`=== Team context (Slack: #${channelName}) ===`);
+
+        if (note) {
+          lines.push(note);
+        } else if (messages.length === 0) {
+          lines.push("No recent messages.");
+        } else {
+          for (const msg of messages) {
+            const msgRec = asRecord(msg);
+            if (!msgRec) continue;
+            const ts = getString(msgRec, ["timestamp"]);
+            const user = getString(msgRec, ["user"]) ?? "unknown";
+            const text = getString(msgRec, ["text"]) ?? "";
+            const timeStr = formatSlackTimestamp(ts);
+            lines.push(`  [${timeStr}] @${user}: ${text}`);
+          }
+        }
+      }
+    }
+  }
+
   const summary = payloadRecord ? getString(payloadRecord, ["summary"]) : null;
   if (summary) {
     lines.push(`Summary: ${summary}`);

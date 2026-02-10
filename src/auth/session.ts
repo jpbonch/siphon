@@ -74,12 +74,21 @@ export async function fetchJsonWithTimeout(url: string, init: RequestInit): Prom
 
 export async function createAuthSession(): Promise<string | null> {
   const url = buildCloudUrl(AUTH_SESSION_PATH);
-  const { response, body } = await fetchJsonWithTimeout(url, {
-    method: "GET",
-    headers: {
-      Accept: "application/json",
-    },
-  });
+  let response: Response;
+  let body: unknown;
+
+  try {
+    const result = await fetchJsonWithTimeout(url, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+      },
+    });
+    response = result.response;
+    body = result.body;
+  } catch {
+    return null;
+  }
 
   if (!response.ok) {
     return null;
@@ -95,12 +104,21 @@ export async function createAuthSession(): Promise<string | null> {
 
 export async function pollAuthSession(sessionId: string): Promise<PollResult> {
   const url = buildCloudUrl(`${AUTH_POLL_PATH}/${encodeURIComponent(sessionId)}`);
-  const { response, body } = await fetchJsonWithTimeout(url, {
-    method: "GET",
-    headers: {
-      Accept: "application/json",
-    },
-  });
+  let response: Response;
+  let body: unknown;
+
+  try {
+    const result = await fetchJsonWithTimeout(url, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+      },
+    });
+    response = result.response;
+    body = result.body;
+  } catch {
+    return { status: "pending" };
+  }
 
   if (response.status === 202) {
     return { status: "pending" };
